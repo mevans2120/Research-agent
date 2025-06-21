@@ -1,10 +1,67 @@
 // Session storage utilities for research context management
 
+interface Source {
+  title: string;
+  url: string;
+}
+
+interface Finding {
+  question: string;
+  answer: string;
+  sources: Source[];
+  scrapedSources: number;
+  method: string;
+  relevanceScore?: {
+    score: number;
+    reasoning: string;
+  };
+  isRelevant: boolean;
+}
+
+interface Synthesis {
+  summary: string;
+  methodology: string;
+  confidence: string;
+  totalSources: number;
+  totalScrapedSources: number;
+  relevantFindings?: number;
+  filteredOutFindings?: number;
+  averageRelevanceScore?: number;
+  formatMetadata?: {
+    format: 'table' | 'bullets' | 'mixed' | 'narrative';
+    hasComparisons: boolean;
+    hasLists: boolean;
+    hasData: boolean;
+  };
+  sourceBreakdown: Array<{
+    question: string;
+    sourceCount: number;
+    sources: Source[];
+    relevanceScore?: number;
+  }>;
+  filteredFindings?: Array<{
+    question: string;
+    relevanceScore?: number;
+    reasoning?: string;
+  }>;
+}
+
+interface ResearchResults {
+  analysis: {
+    originalQuery: string;
+    subQuestions: string[];
+    analysisMethod: string;
+  };
+  findings: Finding[];
+  synthesis: Synthesis;
+  timestamp: string;
+}
+
 export interface ResearchSession {
   id: string;
   originalQuery: string;
   timestamp: string;
-  results: any; // ResearchResults type from page.tsx
+  results: ResearchResults;
   followups: FollowupQuestion[];
 }
 
@@ -116,7 +173,7 @@ export function addFollowupToSession(
  */
 export function createResearchSession(
   originalQuery: string,
-  results: any
+  results: ResearchResults
 ): ResearchSession {
   const session: ResearchSession = {
     id: generateSessionId(),
@@ -134,8 +191,7 @@ export function createResearchSession(
  * Extract relevant context from research results for follow-up questions
  */
 export function extractRelevantContext(
-  session: ResearchSession,
-  followupQuestion: string
+  session: ResearchSession
 ): string {
   try {
     // Extract key information from original research
@@ -150,7 +206,7 @@ export function extractRelevantContext(
     ];
 
     // Add relevant findings (limit to prevent token overflow)
-    originalFindings.slice(0, 3).forEach((finding: any, index: number) => {
+    originalFindings.slice(0, 3).forEach((finding: Finding, index: number) => {
       contextParts.push(`${index + 1}. Q: ${finding.question}`);
       contextParts.push(`   A: ${finding.answer.substring(0, 300)}...`);
     });
@@ -158,7 +214,7 @@ export function extractRelevantContext(
     // Add previous follow-ups for conversation continuity
     if (session.followups.length > 0) {
       contextParts.push(`Previous Follow-up Questions:`);
-      session.followups.slice(-2).forEach((followup, index) => {
+      session.followups.slice(-2).forEach((followup) => {
         contextParts.push(`Q: ${followup.question}`);
         contextParts.push(`A: ${followup.answer.substring(0, 200)}...`);
       });

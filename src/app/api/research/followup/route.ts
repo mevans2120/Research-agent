@@ -27,7 +27,7 @@ async function searchWeb(query: string): Promise<SearchResult[]> {
     const serpApiKey = process.env.SERPAPI_KEY;
     if (!serpApiKey || serpApiKey === 'your_serpapi_key_here') {
       console.warn('SERPAPI_KEY not configured, using fallback search method');
-      return await fallbackSearch(query);
+      return await fallbackSearch();
     }
 
     const response = await axios.get('https://serpapi.com/search', {
@@ -40,7 +40,7 @@ async function searchWeb(query: string): Promise<SearchResult[]> {
     });
 
     const results = response.data.organic_results || [];
-    return results.map((result: any, index: number) => ({
+    return results.map((result: { title?: string; link?: string; snippet?: string }, index: number) => ({
       title: result.title || '',
       link: result.link || '',
       snippet: result.snippet || '',
@@ -48,11 +48,11 @@ async function searchWeb(query: string): Promise<SearchResult[]> {
     }));
   } catch (error) {
     console.error('Web search error:', error);
-    return await fallbackSearch(query);
+    return await fallbackSearch();
   }
 }
 
-async function fallbackSearch(query: string): Promise<SearchResult[]> {
+async function fallbackSearch(): Promise<SearchResult[]> {
   // Simplified fallback for follow-up questions
   console.log('No web search available for follow-up question');
   return [];
@@ -127,7 +127,7 @@ async function scrapeContent(url: string): Promise<ScrapedContent> {
 async function processFollowupQuestion(
   question: string,
   context: string,
-  sendEvent: (type: string, data: any) => void
+  sendEvent: (type: string, data: { message: string; timestamp: string }) => void
 ) {
   sendEvent('activity', {
     message: `🤔 Processing follow-up question: "${question.substring(0, 50)}${question.length > 50 ? '...' : ''}"`,
@@ -135,7 +135,7 @@ async function processFollowupQuestion(
   });
 
   // Determine if we need additional web research
-  const needsWebResearch = await shouldSearchWeb(question, context);
+  const needsWebResearch = await shouldSearchWeb(question);
   
   let webContext = '';
   let sources: Array<{ title: string; url: string }> = [];
@@ -223,7 +223,7 @@ Focus on being precise and helpful while building upon the established research 
   };
 }
 
-async function shouldSearchWeb(question: string, context: string): Promise<boolean> {
+async function shouldSearchWeb(question: string): Promise<boolean> {
   // Simple heuristic to determine if additional web search is needed
   const webSearchKeywords = [
     'latest', 'recent', 'current', 'new', 'update', 'today', 'now',
@@ -289,7 +289,7 @@ async function handleStreamingFollowup(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const sendEvent = (type: string, data: any) => {
+        const sendEvent = (type: string, data: { message: string; timestamp: string } | { question: string; answer: string; sources: Array<{ title: string; url: string }>; contextUsed: string[]; method: string; timestamp: string } | { message: string; error: string }) => {
           const message = `data: ${JSON.stringify({ type, data })}\n\n`;
           controller.enqueue(encoder.encode(message));
         };
@@ -308,7 +308,7 @@ async function handleStreamingFollowup(request: NextRequest) {
         controller.close();
       } catch (error) {
         console.error('Streaming follow-up error:', error);
-        const sendEvent = (type: string, data: any) => {
+        const sendEvent = (type: string, data: { message: string; error: string }) => {
           const message = `data: ${JSON.stringify({ type, data })}\n\n`;
           controller.enqueue(encoder.encode(message));
         };

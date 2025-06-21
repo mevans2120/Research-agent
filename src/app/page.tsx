@@ -239,7 +239,7 @@ export default function Home() {
     setFollowupActivities([]);
     
     try {
-      const context = extractRelevantContext(currentSession, followupQuestion);
+      const context = extractRelevantContext(currentSession);
       
       const response = await fetch('/api/research/followup?stream=true', {
         method: 'POST',

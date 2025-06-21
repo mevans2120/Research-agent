@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -94,7 +90,7 @@ async function searchWeb(query: string): Promise<SearchResult[]> {
     });
 
     const results = response.data.organic_results || [];
-    return results.map((result: any, index: number) => ({
+    return results.map((result: { title?: string; link?: string; snippet?: string }, index: number) => ({
       title: result.title || '',
       link: result.link || '',
       snippet: result.snippet || '',
@@ -267,7 +263,7 @@ No current web search results are available. Please provide a comprehensive answ
   return findings;
 }
 
-async function scoreRelevance(finding: any, originalQuery: string): Promise<RelevanceScore> {
+async function scoreRelevance(finding: { question: string; answer: string }, originalQuery: string): Promise<RelevanceScore> {
   const response = await anthropic.messages.create({
     model: "claude-3-5-sonnet-20241022",
     max_tokens: 300,
@@ -305,7 +301,7 @@ Reasoning: [brief explanation]`
   };
 }
 
-async function filterFindingsByRelevance(findings: any[], originalQuery: string, threshold: number = 70): Promise<FilteredFinding[]> {
+async function filterFindingsByRelevance(findings: { question: string; answer: string; sources: { title: string; url: string }[]; scrapedSources: number; method: string }[], originalQuery: string, threshold: number = 70): Promise<FilteredFinding[]> {
   const filteredFindings: FilteredFinding[] = [];
   
   for (const finding of findings) {
@@ -376,7 +372,7 @@ async function enhancedSynthesizeFindings(originalQuery: string, filteredFinding
   const filteredOutFindings = filteredFindings.filter(f => !f.isRelevant);
   
   const combinedFindings = relevantFindings.map(f =>
-    `Q: ${f.question}\nA: ${f.answer}\nSources: ${f.sources.map((s: any) => s.title).join(', ')}\nRelevance: ${f.relevanceScore?.score}/100`
+    `Q: ${f.question}\nA: ${f.answer}\nSources: ${f.sources.map(s => s.title).join(', ')}\nRelevance: ${f.relevanceScore?.score}/100`
   ).join('\n\n');
 
   let formatInstructions = '';
@@ -460,7 +456,57 @@ Please provide a comprehensive synthesis with enhanced markdown formatting that 
   };
 }
 
-async function gatherInformationWithProgress(subQuestions: string[], sendEvent: (type: string, data: any) => void) {
+interface EventData {
+  message: string;
+  timestamp: string;
+}
+
+interface AnalysisEventData {
+  originalQuery: string;
+  subQuestions: string[];
+  analysisMethod: string;
+}
+
+interface CompleteEventData {
+  analysis: {
+    originalQuery: string;
+    subQuestions: string[];
+    analysisMethod: string;
+  };
+  findings: FilteredFinding[];
+  synthesis: {
+    summary: string;
+    methodology: string;
+    confidence: string;
+    totalSources: number;
+    totalScrapedSources: number;
+    relevantFindings?: number;
+    filteredOutFindings?: number;
+    averageRelevanceScore?: number;
+    formatMetadata?: FormattingMetadata;
+    sourceBreakdown: Array<{
+      question: string;
+      sourceCount: number;
+      sources: { title: string; url: string }[];
+      relevanceScore?: number;
+    }>;
+    filteredFindings?: Array<{
+      question: string;
+      relevanceScore?: number;
+      reasoning?: string;
+    }>;
+  };
+  timestamp: string;
+}
+
+interface ErrorEventData {
+  message: string;
+  error: string;
+}
+
+type StreamEventData = EventData | AnalysisEventData | CompleteEventData | ErrorEventData;
+
+async function gatherInformationWithProgress(subQuestions: string[], sendEvent: (type: string, data: StreamEventData) => void) {
   const findings = [];
   
   for (let i = 0; i < subQuestions.length; i++) {
@@ -495,7 +541,7 @@ async function gatherInformationWithProgress(subQuestions: string[], sendEvent: 
             timestamp: new Date().toISOString()
           });
         }
-      } catch (error) {
+      } catch {
         // Continue with other URLs if one fails
       }
     }
@@ -560,9 +606,9 @@ No current web search results are available. Please provide a comprehensive answ
   return findings;
 }
 
-async function synthesizeFindings(originalQuery: string, findings: any[]) {
+async function synthesizeFindings(originalQuery: string, findings: { question: string; answer: string; sources: { title: string; url: string }[]; scrapedSources: number; method: string }[]) {
   const combinedFindings = findings.map(f =>
-    `Q: ${f.question}\nA: ${f.answer}\nSources: ${f.sources.map((s: any) => s.title).join(', ')}`
+    `Q: ${f.question}\nA: ${f.answer}\nSources: ${f.sources.map(s => s.title).join(', ')}`
   ).join('\n\n');
   
   const response = await anthropic.messages.create({
@@ -675,7 +721,7 @@ async function handleStreamingRequest(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const sendEvent = (type: string, data: any) => {
+        const sendEvent = (type: string, data: StreamEventData) => {
           const message = `data: ${JSON.stringify({ type, data })}\n\n`;
           controller.enqueue(encoder.encode(message));
         };

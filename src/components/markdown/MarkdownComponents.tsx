@@ -74,8 +74,8 @@ function CodeBlock({ children, className, ...props }: React.HTMLAttributes<HTMLE
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
+    } catch (error) {
+      console.error('Failed to copy text: ', error);
     }
   };
 
