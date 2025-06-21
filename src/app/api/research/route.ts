@@ -73,31 +73,39 @@ Please provide 3-5 specific sub-questions, each on a new line, that would help r
 
 async function searchWeb(query: string): Promise<SearchResult[]> {
   try {
-    // Using SerpAPI for web search
-    const serpApiKey = process.env.SERPAPI_KEY;
-    if (!serpApiKey || serpApiKey === 'your_serpapi_key_here') {
-      console.warn('SERPAPI_KEY not configured, using fallback search method');
+    // Using Brave Search API for web search
+    const braveApiKey = process.env.BRAVE_API_KEY;
+    if (!braveApiKey) {
+      console.warn('BRAVE_API_KEY not configured, using fallback search method');
       return await fallbackSearch(query);
     }
 
-    const response = await axios.get('https://serpapi.com/search', {
+    const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
       params: {
-        engine: 'google',
         q: query,
-        api_key: serpApiKey,
-        num: 5
+        count: 5,
+        offset: 0,
+        mkt: 'en-US',
+        safesearch: 'moderate',
+        textDecorations: false,
+        textFormat: 'Raw'
+      },
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': braveApiKey
       }
     });
 
-    const results = response.data.organic_results || [];
-    return results.map((result: { title?: string; link?: string; snippet?: string }, index: number) => ({
+    const results = response.data.web?.results || [];
+    return results.map((result: { title?: string; url?: string; description?: string }, index: number) => ({
       title: result.title || '',
-      link: result.link || '',
-      snippet: result.snippet || '',
+      link: result.url || '',
+      snippet: result.description || '',
       position: index + 1
     }));
   } catch (error) {
-    console.error('Web search error:', error);
+    console.error('Brave Search API error:', error);
     console.log('Falling back to alternative search method');
     return await fallbackSearch(query);
   }

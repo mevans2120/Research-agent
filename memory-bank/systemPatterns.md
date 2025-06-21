@@ -79,3 +79,47 @@ It is optional, but recommended to be updated as the project evolves.
 - **Content Structure Testing**: Validation of automatic section detection, heading hierarchy, and cross-reference generation
 - **Performance Benchmarking**: Rendering speed testing for large markdown documents and memory usage optimization
 - **Accessibility Compliance**: Screen reader compatibility testing and keyboard navigation validation for interactive markdown elements
+[2025-01-21 06:38:33] - **BRAVE SEARCH API INTEGRATION SYSTEM PATTERNS**
+
+## Architectural Patterns
+- **Search Provider Abstraction**: Maintain consistent `SearchResult` interface while swapping underlying search providers
+- **API Response Mapping**: Transform Brave Search API responses to match existing data structures and workflows
+- **Graceful Degradation**: Preserve fallback search mechanisms when primary API is unavailable
+- **Environment-Based Configuration**: Use environment variables for API key management and provider selection
+
+## Coding Patterns
+- **Provider-Agnostic Interface**: `searchWeb()` function maintains same signature regardless of underlying search provider
+- **Response Transformation**: Map Brave API response structure (`web.results[]`) to existing `SearchResult[]` format
+- **Error Handling Strategy**: Brave-specific error codes and rate limiting with fallback to alternative search methods
+- **Configuration Validation**: API key format validation and connectivity testing for robust initialization
+
+## Integration Patterns
+- **Backward Compatibility**: Existing research workflows (streaming/non-streaming) remain unchanged
+- **Performance Monitoring**: Track search operation metrics for quality and response time comparison
+- **Phased Migration**: Environment variable updates followed by code changes with rollback capability
+- **Quality Assurance**: A/B testing approach for search result quality validation across different query types
+[2025-01-21 06:44:58] - **DATABASE STORAGE SOLUTION SYSTEM PATTERNS**
+
+## Architectural Patterns
+- **Persistent Research Context**: Database-backed storage replacing session-only result availability with permanent research history
+- **Query Similarity Matching**: Vector embedding and full-text search for intelligent detection of similar previous queries
+- **Incremental Result Storage**: Real-time storage during research pipeline execution with atomic transaction management
+- **Layered Caching Strategy**: Multi-tier caching (Redis, browser storage, CDN) for optimal performance across different access patterns
+
+## Coding Patterns
+- **Database Abstraction Layer**: Prisma ORM with TypeScript for type-safe database operations and schema management
+- **API Response Normalization**: Consistent data structures between new storage endpoints and existing research API responses
+- **Progressive Enhancement**: Graceful degradation when database unavailable with fallback to existing session storage
+- **Background Processing**: Asynchronous result indexing and similarity computation without blocking user interactions
+
+## Integration Patterns
+- **Pipeline Enhancement**: Seamless integration with existing streaming research workflow without breaking changes
+- **Context Preservation**: Maintain relationships between original research, follow-up questions, and result metadata
+- **Feature Compatibility**: Full compatibility with relevance filtering, enhanced formatting, and markdown display features
+- **Session Bridging**: Smooth transition between session-based and database-backed result storage with data migration capabilities
+
+## Data Management Patterns
+- **Privacy-First Design**: Session-isolated storage with user-controlled data retention and deletion capabilities
+- **Scalable Schema**: UUID-based primary keys and JSONB metadata for flexible schema evolution and horizontal scaling
+- **Search Optimization**: Composite indexing strategy for query text, timestamps, and relevance scores with full-text search capabilities
+- **Audit Trail**: Comprehensive logging of data access, modifications, and user actions for compliance and debugging

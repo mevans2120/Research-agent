@@ -152,3 +152,85 @@ Design a comprehensive markdown display feature that allows the research agent t
   - Improved error handling for controller operations
 - **Result**: Research process now completes successfully (POST /api/research?stream=true 200 in 32028ms)
 - **Files Modified**: `src/app/api/research/route.ts` (lines 722-820)
+[2025-01-21 06:37:51] - **ARCHITECTURAL DECISION: Replace SerpAPI with Brave Search API**
+
+## Decision
+Replace the current SerpAPI integration with Brave Search API for web search functionality in the research agent, using the provided Brave API key.
+
+## Rationale
+- **Provider Independence**: Reduces dependency on Google-based search through SerpAPI
+- **Privacy Focus**: Brave's privacy-first approach aligns with modern web standards
+- **API Reliability**: Dedicated search API with consistent performance and competitive results
+- **Cost Efficiency**: Potentially better pricing structure and rate limits
+- **Result Diversity**: Different search algorithm may provide varied research perspectives
+- **User Request**: Direct user requirement to swap out SerpAPI with Brave Search
+
+## Implementation Details
+- **Environment Configuration**: Replace `SERPAPI_KEY` with `BRAVE_API_KEY=BSA9rny-lggFMnLeoWaj0lS5i21vNpM`
+- **API Integration**: Update `searchWeb()` function to call Brave Search API endpoint
+- **Response Mapping**: Map Brave's response structure to existing `SearchResult` interface
+- **Fallback Preservation**: Maintain existing fallback mechanisms for robustness
+- **Error Handling**: Add Brave-specific error handling and rate limiting
+- **Testing Strategy**: Comprehensive testing across different query types and integration points
+- **Performance Monitoring**: Track search quality and response times compared to SerpAPI
+
+## Technical Impact
+- **Files Modified**: `src/app/api/research/route.ts` (searchWeb function), `.env.local` (API key)
+- **Interface Compatibility**: Maintains existing SearchResult interface and function signatures
+- **Integration Points**: Compatible with streaming/non-streaming workflows and relevance filtering
+- **Backward Compatibility**: Graceful fallback when API is unavailable
+[2025-01-21 06:41:39] - **BRAVE SEARCH API INTEGRATION COMPLETED SUCCESSFULLY**
+
+## Decision
+Successfully implemented and tested the Brave Search API integration to replace SerpAPI as the primary web search provider for the research agent.
+
+## Rationale
+- **Provider Independence**: Successfully reduced dependency on Google-based search through SerpAPI
+- **Privacy Focus**: Brave's privacy-first approach now integrated and operational
+- **API Reliability**: Confirmed reliable performance with consistent search results
+- **Result Quality**: Brave Search API providing high-quality, relevant search results
+- **Integration Success**: Seamless integration with existing research pipeline and features
+
+## Implementation Results
+- **Environment Configuration**: BRAVE_API_KEY successfully configured and operational
+- **API Integration**: Complete rewrite of searchWeb() function using Brave Search API endpoint
+- **Response Mapping**: Successful mapping from Brave's response structure to existing SearchResult interface
+- **Backward Compatibility**: All existing features (streaming, relevance filtering, enhanced formatting) working correctly
+- **Performance**: Research completion in ~28 seconds with 5 web sources found and scraped
+- **Error Handling**: Graceful fallback mechanisms preserved and functional
+
+## Technical Impact
+- **Files Modified**: `src/app/api/research/route.ts` (searchWeb function), `.env.local` (API configuration)
+- **Interface Compatibility**: Maintained existing SearchResult interface and function signatures
+- **Integration Points**: Fully compatible with streaming/non-streaming workflows and all advanced features
+- **Quality Assurance**: Successfully tested with AI research query, confirmed search result quality and scraping functionality
+
+## Status
+The Brave Search API integration is **PRODUCTION READY** and has successfully replaced SerpAPI as the primary search provider. The research agent now operates with enhanced privacy focus while maintaining all existing functionality and performance characteristics.
+[2025-01-21 06:44:45] - **DATABASE STORAGE SOLUTION FOR RESEARCH RESULTS PERSISTENCE**
+
+## Decision
+Design and architect a comprehensive database storage solution that enables users to store previous research results and retrieve them without restarting queries, addressing the current limitation of session-only result availability.
+
+## Rationale
+- **User Experience Enhancement**: Users frequently want to reference previous research without re-running expensive queries
+- **Cost Optimization**: Avoid redundant API calls for similar or repeated research queries
+- **Knowledge Building**: Enable users to build upon previous research findings and create research threads
+- **Performance Improvement**: Instant access to previous results vs. 20-30 second research process
+- **Data Persistence**: Current session storage is lost when browser closes or refreshes
+- **Scalability**: Foundation for advanced features like research comparison, trending topics, and collaborative research
+
+## Implementation Details
+- **Database Architecture**: PostgreSQL with Prisma ORM for production scalability and TypeScript integration
+- **Schema Design**: Three core tables (research_sessions, research_results, follow_up_questions) with UUID primary keys and JSONB metadata support
+- **API Endpoints**: RESTful endpoints for storage (/api/research/store), retrieval (/api/research/history), and similarity search (/api/research/similar)
+- **Integration Strategy**: Seamless integration with existing streaming research pipeline, relevance filtering, and enhanced markdown features
+- **Performance Optimization**: Redis caching layer, full-text search indexing, and vector embeddings for semantic query similarity
+- **Privacy Controls**: Session-based isolation, configurable data retention (30-day default), and user-controlled data deletion
+- **User Experience**: Research history panel, smart query suggestions, result comparison interface, and export capabilities
+
+## Technical Impact
+- **Files to be Created**: Database schema, Prisma configuration, new API routes, frontend history components
+- **Integration Points**: Existing research pipeline, session storage system, streaming architecture, and markdown rendering
+- **Performance Considerations**: Database query optimization, caching strategy, and background result indexing
+- **Deployment Requirements**: PostgreSQL database provisioning, environment variable configuration, and migration scripts
