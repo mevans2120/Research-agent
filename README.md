@@ -20,6 +20,10 @@ A comprehensive AI-powered research tool that combines multiple AI models, web s
 - **Multi-AI Analysis**: Leverages both OpenAI GPT-4 and Anthropic Claude-3 for diverse perspectives
 - **Source Attribution**: Tracks and displays all sources used in research
 - **Comprehensive Synthesis**: Combines findings into well-structured, actionable insights
+- **Real-time Streaming**: Live progress updates during research with Server-Sent Events
+- **Follow-up Questions**: Context-aware follow-up system for deeper exploration
+- **Relevance Filtering**: Intelligent filtering of research results by pertinence
+- **Enhanced Markdown Display**: Rich formatting with interactive elements and structured presentation
 
 ## Setup Instructions
 
@@ -67,25 +71,31 @@ Open [http://localhost:3000](http://localhost:3000) to access the research agent
 3. **Web Search**: Each sub-question is searched using SerpAPI
 4. **Content Scraping**: Top search results are scraped for detailed content
 5. **AI Analysis**: Claude-3 analyzes scraped content and search results
-6. **Synthesis**: GPT-4 combines all findings into a comprehensive answer
+6. **Relevance Filtering**: Results are scored and filtered for pertinence
+7. **Enhanced Formatting**: Content is structured with tables, bullets, and markdown
+8. **Synthesis**: GPT-4 combines all findings into a comprehensive answer
 
-### Example Research Flow
+### Advanced Features
 
-**Input**: "What are the latest developments in renewable energy?"
+#### Real-time Streaming
+- Live progress updates during research
+- Detailed activity logging with timestamps
+- Visual feedback for each research phase
 
-**Sub-questions Generated**:
-- What are the most recent technological breakthroughs in solar energy?
-- What new wind energy projects have been announced in 2024?
-- What government policies regarding renewable energy have changed recently?
-- What are the current market trends and investment patterns in renewable energy?
+#### Follow-up Questions
+- Context-aware question processing
+- Session-based conversation threading
+- Maintains research context across interactions
 
-**For Each Sub-question**:
-1. Search Google for current results
-2. Scrape content from top 3 relevant websites
-3. Analyze findings with Claude-3
-4. Compile sources and insights
+#### Relevance Filtering
+- Configurable relevance thresholds (0-100)
+- Automatic filtering of less pertinent results
+- Visual distinction between relevant and filtered content
 
-**Final Output**: Comprehensive synthesis with source attribution
+#### Enhanced Markdown Display
+- Rich formatting with tables and structured lists
+- Interactive elements and collapsible sections
+- Responsive design with customizable themes
 
 ## Technical Architecture
 
@@ -94,59 +104,50 @@ Open [http://localhost:3000](http://localhost:3000) to access the research agent
 - **Framework**: Next.js API Routes
 - **AI Models**: 
   - OpenAI GPT-4 (analysis & synthesis)
-  - Anthropic Claude-3 Sonnet (information processing)
+  - Anthropic Claude-3 Sonnet (information processing & relevance scoring)
 - **Web Search**: SerpAPI integration
 - **Scraping**: Cheerio for HTML parsing
+- **Streaming**: Server-Sent Events for real-time updates
 - **Error Handling**: Comprehensive error management with fallbacks
 
 ### Frontend
 
 - **Framework**: React with TypeScript
-- **Styling**: Inline styles with responsive design
+- **Styling**: CSS modules with responsive design
 - **Features**:
-  - Real-time research progress
-  - Structured results display
-  - Source attribution and linking
-  - Error handling and user feedback
+  - Real-time research progress streaming
+  - Interactive markdown rendering
+  - Follow-up question interface
+  - Advanced options for relevance and formatting
+  - Session management and conversation threading
 
 ## API Endpoints
 
 ### POST `/api/research`
 
-Performs comprehensive research on a given query.
+Performs comprehensive research on a given query with optional streaming and advanced features.
 
 **Request Body**:
 ```json
 {
-  "query": "Your research question here"
+  "query": "Your research question here",
+  "relevanceThreshold": 70,
+  "enableFormatting": true
 }
 ```
 
-**Response**:
+**Query Parameters**:
+- `stream=true`: Enable real-time streaming updates
+
+### POST `/api/research/followup`
+
+Processes follow-up questions with context from previous research.
+
+**Request Body**:
 ```json
 {
-  "analysis": {
-    "originalQuery": "string",
-    "subQuestions": ["string"],
-    "analysisMethod": "string"
-  },
-  "findings": [
-    {
-      "question": "string",
-      "answer": "string", 
-      "sources": [{"title": "string", "url": "string"}],
-      "scrapedSources": "number",
-      "method": "string"
-    }
-  ],
-  "synthesis": {
-    "summary": "string",
-    "methodology": "string",
-    "confidence": "string",
-    "totalSources": "number",
-    "totalScrapedSources": "number"
-  },
-  "timestamp": "string"
+  "question": "Follow-up question here",
+  "sessionId": "session_identifier"
 }
 ```
 
@@ -158,15 +159,51 @@ Performs comprehensive research on a given query.
 - `ANTHROPIC_API_KEY`: Required for Claude-3 information processing  
 - `SERPAPI_KEY`: Required for web search functionality
 
-### Customization
+### Advanced Options
 
-You can modify the research behavior by editing `/src/app/api/research/route.ts`:
+- **Relevance Threshold**: Adjust filtering sensitivity (0-100)
+- **Enhanced Formatting**: Enable structured output with tables and bullets
+- **Streaming**: Real-time progress updates during research
+- **Follow-up Context**: Maintain conversation history for deeper exploration
 
-- **Search Results**: Change the number of search results per query (default: 5)
-- **Scraping Depth**: Modify how many URLs to scrape per search (default: 3)
-- **Content Length**: Adjust scraped content limits (default: 3000 characters)
-- **AI Models**: Switch between different OpenAI or Anthropic models
-- **Temperature Settings**: Adjust AI creativity vs. accuracy
+## Memory Bank System
+
+This project includes a comprehensive Memory Bank system for maintaining project context:
+
+- **Product Context**: High-level project overview and goals
+- **Active Context**: Current focus and recent changes
+- **Decision Log**: Architectural and implementation decisions
+- **System Patterns**: Recurring patterns and standards
+- **Progress Tracking**: Task completion and development milestones
+
+## Development
+
+### Project Structure
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   └── research/
+│   │       ├── route.ts           # Main research API
+│   │       └── followup/route.ts  # Follow-up questions API
+│   ├── page.tsx                   # Frontend interface
+│   ├── layout.tsx                 # App layout
+│   └── globals.css               # Global styles
+├── components/
+│   ├── markdown/                  # Enhanced markdown components
+│   └── utils/                     # Utility functions
+├── lib/
+│   └── sessionStorage.ts         # Session management
+└── memory-bank/                   # Project context files
+```
+
+### Adding New Features
+
+1. **New Data Sources**: Add integrations in the `gatherInformation` function
+2. **Different AI Models**: Modify model configurations in API route
+3. **Enhanced UI**: Update the React components in `page.tsx`
+4. **Additional Analysis**: Extend the synthesis logic
 
 ## Troubleshooting
 
@@ -184,27 +221,6 @@ The application includes comprehensive error handling:
 - Fallback to AI knowledge when scraping fails
 - Clear error messages for API issues
 - Timeout protection for slow websites
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── app/
-│   ├── api/research/route.ts    # Main research API
-│   ├── page.tsx                 # Frontend interface
-│   ├── layout.tsx              # App layout
-│   └── globals.css             # Global styles
-└── ...
-```
-
-### Adding New Features
-
-1. **New Data Sources**: Add integrations in the `gatherInformation` function
-2. **Different AI Models**: Modify model configurations in API route
-3. **Enhanced UI**: Update the React components in `page.tsx`
-4. **Additional Analysis**: Extend the synthesis logic
 
 ## License
 
