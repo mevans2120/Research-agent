@@ -720,10 +720,21 @@ async function handleStreamingRequest(request: NextRequest) {
   
   const stream = new ReadableStream({
     async start(controller) {
+      let controllerClosed = false;
+      
       try {
         const sendEvent = (type: string, data: StreamEventData) => {
-          const message = `data: ${JSON.stringify({ type, data })}\n\n`;
-          controller.enqueue(encoder.encode(message));
+          if (controllerClosed) {
+            console.log('Skipping event - controller already closed:', type);
+            return;
+          }
+          try {
+            const message = `data: ${JSON.stringify({ type, data })}\n\n`;
+            controller.enqueue(encoder.encode(message));
+          } catch (error) {
+            console.error('Error sending event:', error);
+            controllerClosed = true;
+          }
         };
 
         sendEvent('activity', { message: '🔍 Analyzing your query...', timestamp: new Date().toISOString() });
@@ -787,22 +798,31 @@ async function handleStreamingRequest(request: NextRequest) {
           timestamp: new Date().toISOString()
         });
         
-        controller.close();
+        try {
+          controllerClosed = true;
+          controller.close();
+        } catch (closeError) {
+          console.error('Error closing controller:', closeError);
+        }
       } catch (error) {
         console.error('Streaming research error:', error);
-        try {
-          const errorMessage = `data: ${JSON.stringify({
-            type: 'error',
-            data: {
-              message: 'Research failed',
-              error: error instanceof Error ? error.message : 'Unknown error'
-            }
-          })}\n\n`;
-          controller.enqueue(encoder.encode(errorMessage));
-        } catch (controllerError) {
-          console.error('Controller already closed:', controllerError);
+        if (!controllerClosed) {
+          try {
+            const errorMessage = `data: ${JSON.stringify({
+              type: 'error',
+              data: {
+                message: 'Research failed',
+                error: error instanceof Error ? error.message : 'Unknown error'
+              }
+            })}\n\n`;
+            controller.enqueue(encoder.encode(errorMessage));
+          } catch (controllerError) {
+            console.error('Controller already closed:', controllerError);
+            controllerClosed = true;
+          }
         }
         try {
+          controllerClosed = true;
           controller.close();
         } catch (closeError) {
           console.error('Error closing controller:', closeError);
