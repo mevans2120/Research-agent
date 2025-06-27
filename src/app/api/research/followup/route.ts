@@ -3,9 +3,35 @@ import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy initialization function to avoid module-level client creation
+function getAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+  return new Anthropic({ apiKey });
+}
+
+// Rate limiting utility
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Enhanced error handling for Claude API calls
+async function callClaudeWithErrorHandling(clientCall: () => Promise<any>, context: string) {
+  try {
+    return await clientCall();
+  } catch (error: any) {
+    if (error.status === 401) {
+      console.error(`Claude API 401 Error in ${context}:`, {
+        apiKeyPresent: !!process.env.ANTHROPIC_API_KEY,
+        apiKeyPrefix: process.env.ANTHROPIC_API_KEY?.substring(0, 10),
+        timestamp: new Date().toISOString(),
+        context
+      });
+    }
+    console.error(`Claude API Error in ${context}:`, error);
+    throw error;
+  }
+}
 
 interface SearchResult {
   title: string;
@@ -23,31 +49,40 @@ interface ScrapedContent {
 
 async function searchWeb(query: string): Promise<SearchResult[]> {
   try {
-    // Using SerpAPI for web search
-    const serpApiKey = process.env.SERPAPI_KEY;
-    if (!serpApiKey || serpApiKey === 'your_serpapi_key_here') {
-      console.warn('SERPAPI_KEY not configured, using fallback search method');
+    // Using Brave Search API for web search
+    const braveApiKey = process.env.BRAVE_API_KEY;
+    if (!braveApiKey) {
+      console.warn('BRAVE_API_KEY not configured, using fallback search method');
       return await fallbackSearch();
     }
 
-    const response = await axios.get('https://serpapi.com/search', {
+    const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
       params: {
-        engine: 'google',
         q: query,
-        api_key: serpApiKey,
-        num: 3 // Fewer results for follow-up questions
+        count: 3, // Fewer results for follow-up questions
+        offset: 0,
+        mkt: 'en-US',
+        safesearch: 'moderate',
+        textDecorations: false,
+        textFormat: 'Raw'
+      },
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': braveApiKey
       }
     });
 
-    const results = response.data.organic_results || [];
-    return results.map((result: { title?: string; link?: string; snippet?: string }, index: number) => ({
+    const results = response.data.web?.results || [];
+    return results.map((result: { title?: string; url?: string; description?: string }, index: number) => ({
       title: result.title || '',
-      link: result.link || '',
-      snippet: result.snippet || '',
+      link: result.url || '',
+      snippet: result.description || '',
       position: index + 1
     }));
   } catch (error) {
-    console.error('Web search error:', error);
+    console.error('Brave Search API error:', error);
+    console.log('Falling back to alternative search method');
     return await fallbackSearch();
   }
 }
@@ -196,17 +231,25 @@ Please provide a comprehensive, contextual answer that:
 
 Focus on being precise and helpful while building upon the established research context.`;
 
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 1500,
-    messages: [
-      {
-        role: "user",
-        content: promptContent
-      }
-    ],
-    temperature: 0.3,
-  });
+  const anthropic = getAnthropicClient();
+  
+  // Add rate limiting delay
+  await delay(200);
+  
+  const response = await callClaudeWithErrorHandling(
+    () => anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 1500,
+      messages: [
+        {
+          role: "user",
+          content: promptContent
+        }
+      ],
+      temperature: 0.3,
+    }),
+    'processFollowupQuestion'
+  );
 
   const answer = response.content[0].type === 'text' ? response.content[0].text : '';
 

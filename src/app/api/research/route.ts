@@ -4,9 +4,35 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy initialization function to avoid module-level client creation
+function getAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+  return new Anthropic({ apiKey });
+}
+
+// Rate limiting utility
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Enhanced error handling for Claude API calls
+async function callClaudeWithErrorHandling(clientCall: () => Promise<any>, context: string) {
+  try {
+    return await clientCall();
+  } catch (error: any) {
+    if (error.status === 401) {
+      console.error(`Claude API 401 Error in ${context}:`, {
+        apiKeyPresent: !!process.env.ANTHROPIC_API_KEY,
+        apiKeyPrefix: process.env.ANTHROPIC_API_KEY?.substring(0, 10),
+        timestamp: new Date().toISOString(),
+        context
+      });
+    }
+    console.error(`Claude API Error in ${context}:`, error);
+    throw error;
+  }
+}
 
 interface SearchResult {
   title: string;
@@ -45,24 +71,29 @@ interface FormattingMetadata {
 }
 
 async function analyzeQuery(query: string) {
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 1000,
-    messages: [
-      {
-        role: "user",
-        content: `You are a research analyst. Break down the user's query into 3-5 specific sub-questions that need to be researched to provide a comprehensive answer. Focus on questions that would benefit from current, real-time information.
+  const anthropic = getAnthropicClient();
+  
+  const response = await callClaudeWithErrorHandling(
+    () => anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 1000,
+      messages: [
+        {
+          role: "user",
+          content: `You are a research analyst. Break down the user's query into 3-5 specific sub-questions that need to be researched to provide a comprehensive answer. Focus on questions that would benefit from current, real-time information.
 
 Query to analyze: ${query}
 
 Please provide 3-5 specific sub-questions, each on a new line, that would help research this topic comprehensively.`
-      }
-    ],
-    temperature: 0.3,
-  });
+        }
+      ],
+      temperature: 0.3,
+    }),
+    'analyzeQuery'
+  );
 
   const content = response.content[0].type === 'text' ? response.content[0].text : '';
-  const subQuestions = content.split('\n').filter(line => line.trim().length > 0) || [];
+  const subQuestions = content.split('\n').filter((line: string) => line.trim().length > 0) || [];
   
   return {
     originalQuery: query,
@@ -272,13 +303,19 @@ No current web search results are available. Please provide a comprehensive answ
 }
 
 async function scoreRelevance(finding: { question: string; answer: string }, originalQuery: string): Promise<RelevanceScore> {
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 300,
-    messages: [
-      {
-        role: "user",
-        content: `You are a relevance evaluator. Score how relevant this research finding is to the original query on a scale of 0-100.
+  const anthropic = getAnthropicClient();
+  
+  // Add rate limiting delay
+  await delay(200);
+  
+  const response = await callClaudeWithErrorHandling(
+    () => anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 300,
+      messages: [
+        {
+          role: "user",
+          content: `You are a relevance evaluator. Score how relevant this research finding is to the original query on a scale of 0-100.
 
 Original Query: "${originalQuery}"
 
@@ -294,10 +331,12 @@ Provide a relevance score (0-100) and brief reasoning. Focus on:
 Respond in this exact format:
 Score: [number]
 Reasoning: [brief explanation]`
-      }
-    ],
-    temperature: 0.1,
-  });
+        }
+      ],
+      temperature: 0.1,
+    }),
+    'scoreRelevance'
+  );
 
   const content = response.content[0].type === 'text' ? response.content[0].text : '';
   const scoreMatch = content.match(/Score:\s*(\d+)/);
@@ -327,13 +366,19 @@ async function filterFindingsByRelevance(findings: { question: string; answer: s
 }
 
 async function detectOptimalFormat(findings: FilteredFinding[], originalQuery: string): Promise<FormattingMetadata> {
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 200,
-    messages: [
-      {
-        role: "user",
-        content: `Analyze these research findings and determine the optimal presentation format.
+  const anthropic = getAnthropicClient();
+  
+  // Add rate limiting delay
+  await delay(200);
+  
+  const response = await callClaudeWithErrorHandling(
+    () => anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 200,
+      messages: [
+        {
+          role: "user",
+          content: `Analyze these research findings and determine the optimal presentation format.
 
 Original Query: "${originalQuery}"
 
@@ -356,10 +401,12 @@ Format: [table|bullets|mixed|narrative]
 HasComparisons: [true|false]
 HasLists: [true|false]
 HasData: [true|false]`
-      }
-    ],
-    temperature: 0.1,
-  });
+        }
+      ],
+      temperature: 0.1,
+    }),
+    'detectOptimalFormat'
+  );
 
   const content = response.content[0].type === 'text' ? response.content[0].text : '';
   const formatMatch = content.match(/Format:\s*(table|bullets|mixed|narrative)/i);
@@ -399,13 +446,19 @@ async function enhancedSynthesizeFindings(originalQuery: string, filteredFinding
       break;
   }
 
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 2500,
-    messages: [
-      {
-        role: "user",
-        content: `You are a research synthesizer with enhanced markdown formatting capabilities. Combine the research findings into a comprehensive, well-structured markdown answer to the original query.
+  const anthropic = getAnthropicClient();
+  
+  // Add rate limiting delay
+  await delay(200);
+  
+  const response = await callClaudeWithErrorHandling(
+    () => anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 2500,
+      messages: [
+        {
+          role: "user",
+          content: `You are a research synthesizer with enhanced markdown formatting capabilities. Combine the research findings into a comprehensive, well-structured markdown answer to the original query.
 
 Original Query: ${originalQuery}
 
@@ -431,14 +484,18 @@ Additional markdown formatting guidelines:
 IMPORTANT: Return ONLY properly formatted markdown content. Do not include any explanatory text about the formatting - just the formatted research synthesis.
 
 Please provide a comprehensive synthesis with enhanced markdown formatting that directly answers the original query.`
-      }
-    ],
-    temperature: 0.2,
-  });
+        }
+      ],
+      temperature: 0.2,
+    }),
+    'enhancedSynthesizeFindings'
+  );
 
   const totalSources = relevantFindings.reduce((acc, f) => acc + f.sources.length, 0);
   const totalScrapedSources = relevantFindings.reduce((acc, f) => acc + f.scrapedSources, 0);
-  const avgRelevanceScore = relevantFindings.reduce((acc, f) => acc + (f.relevanceScore?.score || 0), 0) / relevantFindings.length;
+  const avgRelevanceScore = relevantFindings.length > 0
+    ? relevantFindings.reduce((acc, f) => acc + (f.relevanceScore?.score || 0), 0) / relevantFindings.length
+    : 0;
 
   return {
     summary: response.content[0].type === 'text' ? response.content[0].text : '',
@@ -586,16 +643,24 @@ Based on the above web search results and scraped content, provide a comprehensi
 
 No current web search results are available. Please provide a comprehensive answer to this research question based on your training data. Focus on providing accurate, detailed information while noting that this information may not reflect the most recent developments.`;
 
-    const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 1500,
-      messages: [
-        {
-          role: "user",
-          content: promptContent
-        }
-      ]
-    });
+    const anthropic = getAnthropicClient();
+    
+    // Add rate limiting delay
+    await delay(300);
+    
+    const response = await callClaudeWithErrorHandling(
+      () => anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1500,
+        messages: [
+          {
+            role: "user",
+            content: promptContent
+          }
+        ]
+      }),
+      `gatherInformationWithProgress-question-${questionNum}`
+    );
     
     findings.push({
       question,
@@ -619,13 +684,19 @@ async function synthesizeFindings(originalQuery: string, findings: { question: s
     `Q: ${f.question}\nA: ${f.answer}\nSources: ${f.sources.map(s => s.title).join(', ')}`
   ).join('\n\n');
   
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 2000,
-    messages: [
-      {
-        role: "user",
-        content: `You are a research synthesizer. Combine the research findings into a comprehensive, well-structured answer to the original query. Include source attribution and ensure the response is accurate and up-to-date based on the provided research.
+  const anthropic = getAnthropicClient();
+  
+  // Add rate limiting delay
+  await delay(200);
+  
+  const response = await callClaudeWithErrorHandling(
+    () => anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 2000,
+      messages: [
+        {
+          role: "user",
+          content: `You are a research synthesizer. Combine the research findings into a comprehensive, well-structured answer to the original query. Include source attribution and ensure the response is accurate and up-to-date based on the provided research.
 
 Original Query: ${originalQuery}
 
@@ -633,10 +704,12 @@ Research Findings:
 ${combinedFindings}
 
 Please provide a comprehensive synthesis with proper source attribution that directly answers the original query.`
-      }
-    ],
-    temperature: 0.2,
-  });
+        }
+      ],
+      temperature: 0.2,
+    }),
+    'synthesizeFindings'
+  );
 
   const totalSources = findings.reduce((acc, f) => acc + f.sources.length, 0);
   const totalScrapedSources = findings.reduce((acc, f) => acc + f.scrapedSources, 0);
@@ -729,18 +802,84 @@ async function handleStreamingRequest(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let controllerClosed = false;
+      let streamTimeout: NodeJS.Timeout;
+      
+      // Enhanced controller state management with proper closure detection
+      const isControllerClosed = () => {
+        return controllerClosed || controller.desiredSize === null;
+      };
+      
+      const closeController = () => {
+        if (!controllerClosed) {
+          controllerClosed = true;
+          if (streamTimeout) {
+            clearTimeout(streamTimeout);
+          }
+          try {
+            controller.close();
+          } catch (error) {
+            // Controller already closed - ignore error
+            console.log('Controller already closed during cleanup');
+          }
+        }
+      };
+      
+      // Set overall stream timeout (60 seconds)
+      streamTimeout = setTimeout(() => {
+        console.log('Stream timeout reached - closing controller');
+        if (!isControllerClosed()) {
+          try {
+            const timeoutMessage = `data: ${JSON.stringify({
+              type: 'error',
+              data: {
+                message: 'Research process timed out',
+                error: 'Stream timeout after 60 seconds'
+              }
+            })}\n\n`;
+            controller.enqueue(encoder.encode(timeoutMessage));
+          } catch (error) {
+            console.log('Failed to send timeout message:', error);
+          }
+        }
+        closeController();
+      }, 60000);
       
       try {
         const sendEvent = (type: string, data: StreamEventData) => {
-          if (controllerClosed) {
-            console.log('Skipping event - controller already closed:', type);
+          if (isControllerClosed()) {
+            console.log(`Attempted to send event to closed controller: ${type}`);
             return;
           }
+          
           try {
             const message = `data: ${JSON.stringify({ type, data })}\n\n`;
             controller.enqueue(encoder.encode(message));
+            
+            // Reset timeout on successful event (research is progressing)
+            if (streamTimeout) {
+              clearTimeout(streamTimeout);
+              streamTimeout = setTimeout(() => {
+                console.log('Stream timeout reached during research - closing controller');
+                if (!isControllerClosed()) {
+                  try {
+                    const timeoutMessage = `data: ${JSON.stringify({
+                      type: 'error',
+                      data: {
+                        message: 'Research process timed out',
+                        error: 'No activity for 60 seconds'
+                      }
+                    })}\n\n`;
+                    controller.enqueue(encoder.encode(timeoutMessage));
+                  } catch (error) {
+                    console.log('Failed to send timeout message:', error);
+                  }
+                }
+                closeController();
+              }, 60000);
+            }
+            
           } catch (error) {
-            console.error('Error sending event:', error);
+            console.error('Failed to send event:', error);
             controllerClosed = true;
           }
         };
@@ -806,15 +945,14 @@ async function handleStreamingRequest(request: NextRequest) {
           timestamp: new Date().toISOString()
         });
         
-        try {
-          controllerClosed = true;
-          controller.close();
-        } catch (closeError) {
-          console.error('Error closing controller:', closeError);
-        }
+        // Clean shutdown
+        closeController();
+        
       } catch (error) {
         console.error('Streaming research error:', error);
-        if (!controllerClosed) {
+        
+        // Send error event if controller is still open
+        if (!isControllerClosed()) {
           try {
             const errorMessage = `data: ${JSON.stringify({
               type: 'error',
@@ -825,16 +963,12 @@ async function handleStreamingRequest(request: NextRequest) {
             })}\n\n`;
             controller.enqueue(encoder.encode(errorMessage));
           } catch (controllerError) {
-            console.error('Controller already closed:', controllerError);
-            controllerClosed = true;
+            console.error('Failed to send error message:', controllerError);
           }
         }
-        try {
-          controllerClosed = true;
-          controller.close();
-        } catch (closeError) {
-          console.error('Error closing controller:', closeError);
-        }
+        
+        // Ensure controller is closed
+        closeController();
       }
     }
   });

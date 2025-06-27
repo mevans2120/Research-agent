@@ -164,6 +164,15 @@ export default function Home() {
     setActivities([]);
     setCurrentSession(null);
     
+    // Set frontend timeout (2 minutes)
+    const frontendTimeout = setTimeout(() => {
+      if (loading) {
+        console.log('Frontend timeout reached - research taking too long');
+        setError('Research process timed out after 2 minutes. Please try again with a more specific query.');
+        setLoading(false);
+      }
+    }, 120000);
+    
     try {
       const response = await fetch('/api/research?stream=true', {
         method: 'POST',
@@ -176,6 +185,7 @@ export default function Home() {
       });
       
       if (!response.ok) {
+        clearTimeout(frontendTimeout);
         throw new Error('Research failed');
       }
 
@@ -183,13 +193,23 @@ export default function Home() {
       const decoder = new TextDecoder();
       
       if (!reader) {
+        clearTimeout(frontendTimeout);
         throw new Error('No response stream available');
       }
 
       while (true) {
         const { done, value } = await reader.read();
         
-        if (done) break;
+        if (done) {
+          clearTimeout(frontendTimeout);
+          // If we reach here without getting 'complete', something went wrong
+          if (loading) {
+            console.log('Stream ended without completion event');
+            setError('Research process ended unexpectedly. Please try again.');
+            setLoading(false);
+          }
+          break;
+        }
         
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -207,6 +227,7 @@ export default function Home() {
                   // Store analysis data if needed
                   break;
                 case 'complete':
+                  clearTimeout(frontendTimeout);
                   setResults(data.data);
                   setLoading(false);
                   
@@ -215,17 +236,20 @@ export default function Home() {
                   setCurrentSession(session);
                   break;
                 case 'error':
-                  setError(data.data.error || 'Research failed');
+                  clearTimeout(frontendTimeout);
+                  setError(data.data.error || data.data.message || 'Research failed');
                   setLoading(false);
                   break;
               }
-            } catch {
+            } catch (parseError) {
+              console.log('Failed to parse SSE data:', parseError);
               // Skip malformed JSON
             }
           }
         }
       }
     } catch (error) {
+      clearTimeout(frontendTimeout);
       console.error('Research error:', error);
       setError(error instanceof Error ? error.message : 'An error occurred');
       setLoading(false);
