@@ -21,7 +21,7 @@ async function callClaudeWithErrorHandling(clientCall: () => Promise<any>, conte
   try {
     return await clientCall();
   } catch (error: any) {
-    if (error.status === 401) {
+    if (error?.status === 401) {
       console.error(`Claude API 401 Error in ${context}:`, {
         apiKeyPresent: !!process.env.ANTHROPIC_API_KEY,
         apiKeyPrefix: process.env.ANTHROPIC_API_KEY?.substring(0, 10),
@@ -279,16 +279,20 @@ Based on the above web search results and scraped content, provide a comprehensi
 
 No current web search results are available. Please provide a comprehensive answer to this research question based on your training data. Focus on providing accurate, detailed information while noting that this information may not reflect the most recent developments.`;
 
-    const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 1500,
-      messages: [
-        {
-          role: "user",
-          content: promptContent
-        }
-      ]
-    });
+    const anthropic = getAnthropicClient();
+    const response = await callClaudeWithErrorHandling(
+      () => anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1500,
+        messages: [
+          {
+            role: "user",
+            content: promptContent
+          }
+        ]
+      }),
+      'gatherInformation'
+    );
     
     findings.push({
       question,
@@ -571,10 +575,16 @@ interface ErrorEventData {
 
 type StreamEventData = EventData | AnalysisEventData | CompleteEventData | ErrorEventData;
 
-async function gatherInformationWithProgress(subQuestions: string[], sendEvent: (type: string, data: StreamEventData) => void) {
+async function gatherInformationWithProgress(subQuestions: string[], sendEvent: (type: string, data: StreamEventData) => void, isControllerClosed: () => boolean) {
   const findings = [];
   
   for (let i = 0; i < subQuestions.length; i++) {
+    // Check if controller is closed before proceeding
+    if (isControllerClosed()) {
+      console.log('Controller closed, stopping research');
+      break;
+    }
+    
     const question = subQuestions[i];
     const questionNum = i + 1;
     
@@ -586,6 +596,12 @@ async function gatherInformationWithProgress(subQuestions: string[], sendEvent: 
     // Step 1: Search the web for current information
     const searchResults = await searchWeb(question);
     
+    // Check if controller is closed before sending event
+    if (isControllerClosed()) {
+      console.log('Controller closed during web search, stopping research');
+      break;
+    }
+    
     sendEvent('activity', {
       message: `📄 Found ${searchResults.length} web sources, scraping content...`,
       timestamp: new Date().toISOString()
@@ -596,10 +612,16 @@ async function gatherInformationWithProgress(subQuestions: string[], sendEvent: 
     const urlsToScrape = searchResults.slice(0, 3).map(result => result.link);
     
     for (const url of urlsToScrape) {
+      // Check if controller is closed before scraping
+      if (isControllerClosed()) {
+        console.log('Controller closed during scraping, stopping research');
+        break;
+      }
+      
       try {
         const content = await scrapeContent(url);
         scrapedContent.push(content);
-        if (!content.error) {
+        if (!content.error && !isControllerClosed()) {
           const domain = new URL(url).hostname;
           sendEvent('activity', {
             message: `📄 Scraped content from ${domain}`,
@@ -609,6 +631,12 @@ async function gatherInformationWithProgress(subQuestions: string[], sendEvent: 
       } catch {
         // Continue with other URLs if one fails
       }
+    }
+    
+    // Check if controller is closed before sending analysis event
+    if (isControllerClosed()) {
+      console.log('Controller closed before analysis, stopping research');
+      break;
     }
     
     sendEvent('activity', {
@@ -669,6 +697,12 @@ No current web search results are available. Please provide a comprehensive answ
       scrapedSources: scrapedContent.filter(c => !c.error).length,
       method: hasWebData ? "Web search + scraping + Claude-3 analysis" : "Claude-3 knowledge base analysis"
     });
+    
+    // Check if controller is closed before sending completion event
+    if (isControllerClosed()) {
+      console.log('Controller closed after analysis, stopping research');
+      break;
+    }
     
     sendEvent('activity', {
       message: `✅ Completed research for question ${questionNum}/${subQuestions.length}`,
@@ -817,7 +851,7 @@ async function handleStreamingRequest(request: NextRequest) {
           }
           try {
             controller.close();
-          } catch (error) {
+          } catch {
             // Controller already closed - ignore error
             console.log('Controller already closed during cleanup');
           }
@@ -895,7 +929,13 @@ async function handleStreamingRequest(request: NextRequest) {
         sendEvent('analysis', analysis);
         
         // Step 2: Research each sub-question with web search and scraping
-        const findings = await gatherInformationWithProgress(analysis.subQuestions, sendEvent);
+        const findings = await gatherInformationWithProgress(analysis.subQuestions, sendEvent, isControllerClosed);
+        
+        // Check if controller is closed after research
+        if (isControllerClosed()) {
+          console.log('Controller closed after research, stopping process');
+          return;
+        }
         
         // Step 3: Filter findings by relevance
         sendEvent('activity', {
@@ -906,10 +946,22 @@ async function handleStreamingRequest(request: NextRequest) {
         const relevantCount = filteredFindings.filter(f => f.isRelevant).length;
         const filteredCount = filteredFindings.filter(f => !f.isRelevant).length;
         
+        // Check if controller is closed after filtering
+        if (isControllerClosed()) {
+          console.log('Controller closed after filtering, stopping process');
+          return;
+        }
+        
         sendEvent('activity', {
           message: `📊 Found ${relevantCount} relevant findings, filtered out ${filteredCount} less relevant ones`,
           timestamp: new Date().toISOString()
         });
+        
+        // Check if controller is closed before synthesis
+        if (isControllerClosed()) {
+          console.log('Controller closed before synthesis, stopping process');
+          return;
+        }
         
         // Step 4: Detect optimal formatting and synthesize
         let synthesis;
@@ -933,17 +985,26 @@ async function handleStreamingRequest(request: NextRequest) {
           synthesis = await synthesizeFindings(query, relevantFindings);
         }
         
+        // Check if controller is closed before sending completion events
+        if (isControllerClosed()) {
+          console.log('Controller closed before completion events, stopping process');
+          return;
+        }
+        
         sendEvent('activity', {
           message: '✅ Enhanced research completed successfully!',
           timestamp: new Date().toISOString()
         });
         
-        sendEvent('complete', {
-          analysis,
-          findings: filteredFindings,
-          synthesis,
-          timestamp: new Date().toISOString()
-        });
+        // Final check before sending complete event
+        if (!isControllerClosed()) {
+          sendEvent('complete', {
+            analysis,
+            findings: filteredFindings,
+            synthesis,
+            timestamp: new Date().toISOString()
+          });
+        }
         
         // Clean shutdown
         closeController();

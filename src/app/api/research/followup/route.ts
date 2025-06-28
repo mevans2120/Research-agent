@@ -20,7 +20,7 @@ async function callClaudeWithErrorHandling(clientCall: () => Promise<any>, conte
   try {
     return await clientCall();
   } catch (error: any) {
-    if (error.status === 401) {
+    if (error?.status === 401) {
       console.error(`Claude API 401 Error in ${context}:`, {
         apiKeyPresent: !!process.env.ANTHROPIC_API_KEY,
         apiKeyPrefix: process.env.ANTHROPIC_API_KEY?.substring(0, 10),

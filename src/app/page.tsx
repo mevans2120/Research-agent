@@ -165,12 +165,12 @@ export default function Home() {
     setCurrentSession(null);
     
     // Set frontend timeout (2 minutes)
+    let timeoutTriggered = false;
     const frontendTimeout = setTimeout(() => {
-      if (loading) {
-        console.log('Frontend timeout reached - research taking too long');
-        setError('Research process timed out after 2 minutes. Please try again with a more specific query.');
-        setLoading(false);
-      }
+      timeoutTriggered = true;
+      console.log('Frontend timeout reached - research taking too long');
+      setError('Research process timed out after 2 minutes. Please try again with a more specific query.');
+      setLoading(false);
     }, 120000);
     
     try {
@@ -202,8 +202,8 @@ export default function Home() {
         
         if (done) {
           clearTimeout(frontendTimeout);
-          // If we reach here without getting 'complete', something went wrong
-          if (loading) {
+          // If we reach here without getting 'complete' and timeout wasn't triggered, something went wrong
+          if (loading && !timeoutTriggered) {
             console.log('Stream ended without completion event');
             setError('Research process ended unexpectedly. Please try again.');
             setLoading(false);
@@ -227,18 +227,22 @@ export default function Home() {
                   // Store analysis data if needed
                   break;
                 case 'complete':
-                  clearTimeout(frontendTimeout);
-                  setResults(data.data);
-                  setLoading(false);
-                  
-                  // Create and save research session
-                  const session = createResearchSession(query, data.data);
-                  setCurrentSession(session);
+                  if (!timeoutTriggered) {
+                    clearTimeout(frontendTimeout);
+                    setResults(data.data);
+                    setLoading(false);
+                    
+                    // Create and save research session
+                    const session = createResearchSession(query, data.data);
+                    setCurrentSession(session);
+                  }
                   break;
                 case 'error':
-                  clearTimeout(frontendTimeout);
-                  setError(data.data.error || data.data.message || 'Research failed');
-                  setLoading(false);
+                  if (!timeoutTriggered) {
+                    clearTimeout(frontendTimeout);
+                    setError(data.data.error || data.data.message || 'Research failed');
+                    setLoading(false);
+                  }
                   break;
               }
             } catch (parseError) {
